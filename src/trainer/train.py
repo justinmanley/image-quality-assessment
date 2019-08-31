@@ -113,6 +113,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     image_dir = args.__dict__['image_dir']
+    print('image_dir: ' + image_dir)
     job_dir = args.__dict__['job_dir']
 
     ensure_dir_exists(os.path.join(job_dir, 'weights'))

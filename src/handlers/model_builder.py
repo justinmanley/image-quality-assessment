@@ -24,6 +24,8 @@ class Nima:
             self.base_module = importlib.import_module('keras.applications.inception_v3')
         elif self.base_model_name == 'InceptionResNetV2':
             self.base_module = importlib.import_module('keras.applications.inception_resnet_v2')
+        elif self.base_model_name == 'MosaicNet':
+            self.base_module = importlib.import_module('models.mosaicnet')
         else:
             self.base_module = importlib.import_module('keras.applications.'+self.base_model_name.lower())
 
