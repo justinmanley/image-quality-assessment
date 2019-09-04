@@ -6,15 +6,24 @@ from ast import literal_eval as make_tuple
 from functools import reduce
 from operator import mul
 
+def intersperse(iterable, delimiter):
+    it = iter(iterable)
+    yield next(it)
+    for x in it:
+        yield delimiter
+        yield x
+
 class FrameComposer:
     def __init__(self, images, scale, grid_dimensions, grid_margin):
+        # images is a numpy array with shape (W, H, C, N) - for example,
+        # (8, 10, 3, N).
         self._images = images
         self._scale_factor = scale
-        self._grid_dimensions = grid_dimensions
+        self._grid_dimensions = 1, images.shape[3] # DO NOT SUBMIT
         self._grid_margin = grid_margin
 
     def compose(self):
-        composition = self._compose_frame(self._images)
+        composition = self._compose_frame()
         upsampled = self._upsample(composition)
         return self._normalize(upsampled)
 
@@ -33,7 +42,6 @@ class FrameComposer:
         return tuple(dim * self._scale_factor for dim in output_shape[0:2])
 
     def _upsample(self, a):
-        print('a.shape', a.shape)
         return np.repeat(
             np.repeat(a, self._scale_factor, axis=0),
             self._scale_factor,
@@ -42,28 +50,18 @@ class FrameComposer:
     def _normalize(self, a):
         return np.uint8((a + 0.5) * 255)
 
-    def _compose_frame(self, images):
+    def _compose_frame(self):
+        images = self._images
         cols, rows = self._grid_dimensions
-        image_rows, image_cols = images.shape[0:2]
+        image_rows, image_cols, image_channels = images.shape[0:3]
         margin = self._grid_margin
-        frame = np.full(self._output_shape(), 0, dtype=np.float64)
 
-        row_start = 0
-        col_start = 0
-        for i in range(images.shape[3]):
-            image = images[:,:,:,i]
-            row_end = row_start + image_rows
-            col_end = col_start + image_cols
-            frame[row_start:row_end,col_start:col_end] = image
-            if (i + 1) % rows == 0 and i > 0:
-                row_start = 0
-                col_start += image_cols + margin
-            else:
-                row_start += image_rows + margin
+        
+        images_with_margins = intersperse(
+            [images[:,:,:,i] for i in range(images.shape[3])],
+            np.full((image_rows, 1, image_channels), 0))
 
-        return frame
-
-
+        return np.concatenate(list(images_with_margins), axis=1)
 
 class VideoGenerator:
     def __init__(self, path, scale, grid_dimensions, grid_margin):
