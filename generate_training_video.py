@@ -6,40 +6,38 @@ from ast import literal_eval as make_tuple
 from functools import reduce
 from operator import mul
 
-def intersperse(iterable, delimiter):
-    it = iter(iterable)
-    yield next(it)
-    for x in it:
-        yield delimiter
-        yield x
-
 class FrameComposer:
-    def __init__(self, images, scale, grid_dimensions, grid_margin):
-        # images is a numpy array with shape (W, H, C, N) - for example,
-        # (8, 10, 3, N).
-        self._images = images
+    def __init__(self, scale, grid_dimensions, grid_margin):
         self._scale_factor = scale
-        self._grid_dimensions = 1, images.shape[3] # DO NOT SUBMIT
+        self._grid_dimensions = grid_dimensions
         self._grid_margin = grid_margin
 
-    def compose(self):
-        composition = self._compose_frame()
+    def compose(self, images):
+        composition = self._compose_frame(images)
         upsampled = self._upsample(composition)
         return self._normalize(upsampled)
 
-    def _output_shape(self):
+    def output_size(self, image_shape):
+        # image_dimensions is a 3-tuple, of the form (cols, rows, channels)
+        # (i.e. in the format returned by ndarray.shape). For example, for
+        # an 8x10 (landscape) image, this would be (8,10,3).
+        scale = self._scale_factor
+        output_shape = self._output_shape(image_shape)
+        return (
+            output_shape[1] * scale,
+            output_shape[0] * scale,
+            output_shape[2]
+        )
+
+    def _output_shape(self, image_shape):
         cols, rows = self._grid_dimensions
-        image_rows, image_cols = self._images.shape[0:2]
+        image_rows, image_cols = image_shape[0:2]
         margin = self._grid_margin
         return (
             rows * image_rows + (rows - 1) * margin,
             cols * image_cols + (cols - 1) * margin,
-            self._images.shape[2],
+            image_shape[2],
         )
-
-    def output_size(self):
-        output_shape = self._output_shape()
-        return tuple(dim * self._scale_factor for dim in output_shape[0:2])
 
     def _upsample(self, a):
         return np.repeat(
@@ -50,18 +48,28 @@ class FrameComposer:
     def _normalize(self, a):
         return np.uint8((a + 0.5) * 255)
 
-    def _compose_frame(self):
-        images = self._images
+    def _compose_frame(self, images):
         cols, rows = self._grid_dimensions
-        image_rows, image_cols, image_channels = images.shape[0:3]
+        image_rows, image_cols = images.shape[0:2]
         margin = self._grid_margin
+        frame = np.full(self._output_shape(images.shape), 0, dtype=np.float64)
 
-        
-        images_with_margins = intersperse(
-            [images[:,:,:,i] for i in range(images.shape[3])],
-            np.full((image_rows, 1, image_channels), 0))
+        row_start = 0
+        col_start = 0
+        for i in range(images.shape[3]):
+            image = images[:,:,:,i]
+            row_end = row_start + image_rows
+            col_end = col_start + image_cols
+            frame[row_start:row_end,col_start:col_end] = image
+            if (i + 1) % rows == 0 and i > 0:
+                row_start = 0
+                col_start += image_cols + margin
+            else:
+                row_start += image_rows + margin
 
-        return np.concatenate(list(images_with_margins), axis=1)
+        return frame
+
+
 
 class VideoGenerator:
     def __init__(self, path, scale, grid_dimensions, grid_margin):
@@ -84,11 +92,16 @@ class VideoGenerator:
                     raise ValueError('Size of grid layout must match the number of filters.')
                 arrays.append(weights_array)
 
-        output_size = FrameComposer(arrays[0]).output_size()
+        composer = FrameComposer(
+            scale=self._scale_factor,
+            grid_dimensions=self._grid_dimensions,
+            grid_margin=self._grid_margin)
+
+        output_size = composer.output_size(arrays[0].shape)
         writer = FFMPEG_VideoWriter(self._path + '.mp4', output_size, fps=1.0)
         with writer:
             for filters in arrays:
-                writer.write_frame(FrameComposer(filters).compose())
+                writer.write_frame(composer.compose(filters))
 
 
 if __name__ == '__main__':
