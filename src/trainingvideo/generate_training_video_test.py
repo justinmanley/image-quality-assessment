@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from generate_training_video import FrameComposer
+from trainingvideo.generate_training_video import FrameComposer
 from numpy.testing import assert_equal
 
 

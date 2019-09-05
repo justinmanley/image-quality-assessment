@@ -5,6 +5,18 @@ import os
 from ast import literal_eval as make_tuple
 from functools import reduce
 from operator import mul
+from handlers.config_loader import load_config
+from utils.mosaics_loader import PCAWhitener, MosaicsLoader
+
+class IdentityImageProcessor:
+    def __init__(self):
+        pass
+
+    def process(self, unprocessed):
+        return unprocessed
+
+    def restore(self, processed):
+        return processed
 
 class FrameComposer:
     def __init__(self, scale, grid_dimensions, grid_margin):
@@ -72,13 +84,14 @@ class FrameComposer:
 
 
 class VideoGenerator:
-    def __init__(self, path, scale, grid_dimensions, grid_margin):
+    def __init__(self, path, scale, grid_dimensions, grid_margin, training_config_path):
         # Path to a directory of .npy files. Each array is expected to have
         # values between -0.5 and 0.5.
         self._path = path
         self._scale_factor = scale
         self._grid_dimensions = grid_dimensions
         self._grid_margin = grid_margin
+        self._training_config_path = training_config_path
 
     def generate_video(self):
         files = sorted(os.listdir(self._path))
@@ -87,7 +100,7 @@ class VideoGenerator:
         arrays = []
         for array_file in files:
             with open(os.path.join(self._path, array_file), 'rb') as f:
-                weights_array = np.swapaxes(np.load(f, allow_pickle=False), 0, 1)
+                weights_array = np.load(f, allow_pickle=False)
                 if weights_array.shape[3] != reduce(mul, self._grid_dimensions, 1):
                     raise ValueError('Size of grid layout must match the number of filters.')
                 arrays.append(weights_array)
@@ -96,12 +109,24 @@ class VideoGenerator:
             scale=self._scale_factor,
             grid_dimensions=self._grid_dimensions,
             grid_margin=self._grid_margin)
+        processor = self._get_array_processor()
 
         output_size = composer.output_size(arrays[0].shape)
         writer = FFMPEG_VideoWriter(self._path + '.mp4', output_size, fps=1.0)
         with writer:
             for filters in arrays:
-                writer.write_frame(composer.compose(filters))
+                restored_filters = processor.restore(filters)
+                composed_frame = composer.compose(restored_filters)
+                writer.write_frame(composed_frame)
+
+    def _get_array_processor(self):
+        config = load_config(self._training_config_path)
+        if config['mosaics']:
+            loader = MosaicsLoader("/Users/justin/projects/mosaics/architect_mosaics_processed")
+            mosaics = loader.load_mosaics(config['mosaics'])
+            return PCAWhitener(mosaics)
+        else:
+            return IdentityImageProcessor()
 
 
 if __name__ == '__main__':
@@ -110,10 +135,13 @@ if __name__ == '__main__':
     parser.add_argument('--scale', type=int, default=1, help='Amount by which to scale the arrays')
     parser.add_argument('--grid_dimensions', default='(1,1)', type=str, help='How to lay out weights')
     parser.add_argument('--grid_margin', default=1, type=int, help='Margin between filters')
+    parser.add_argument('--training_config_path',
+        default={}, type=str, help='Path to JSON training config file')
     args = parser.parse_args()
     VideoGenerator(
         path=args.arrays_directory,
         scale=args.scale,
         grid_dimensions=make_tuple(args.grid_dimensions),
         grid_margin=args.grid_margin,
+        training_config_path=args.training_config_path,
     ).generate_video()
