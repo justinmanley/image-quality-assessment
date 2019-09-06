@@ -10,6 +10,10 @@ from handlers.samples_loader import load_samples
 from handlers.config_loader import load_config
 from utils.utils import ensure_dir_exists
 from utils.keras_utils import TensorBoardBatch
+from callbacks.layer_weights_logger import LayerWeightsLogger
+from utils.mosaics_loader import MosaicsLoader
+
+import numpy as np
 
 
 def train(base_model_name,
@@ -29,17 +33,46 @@ def train(base_model_name,
           num_workers_data_load=2,
           decay_dense=0,
           decay_all=0,
+          mosaics=None,
           **kwargs):
 
     # build NIMA model and load existing weights if they were provided in config
-    nima = Nima(base_model_name, n_classes, learning_rate_dense, dropout_rate, decay=decay_dense)
+    nima = Nima(
+        base_model_name,
+        n_classes,
+        learning_rate_dense,
+        dropout_rate,
+        decay=decay_dense,
+        weights=existing_weights)
     nima.build()
 
     if existing_weights is not None:
+        print('loading existing weights from %s' % existing_weights)
         nima.nima_model.load_weights(existing_weights)
+        
+    # override weights with mosaics.
+    # it is crucial that this happen after existing weights are loaded.
+    mosaics_layer = nima.base_model.layers[2]
+    if mosaics:
+        loader = MosaicsLoader("/src/mosaics")
+        default_layer_weights = mosaics_layer.get_weights()
+        mosaics_array = loader.load_and_standardize_mosaics(mosaics) 
+        if mosaics_array.shape != default_layer_weights[0].shape:
+            raise ValueError(
+                "Shape of mosaics %s does not match the shape of the layer: %s" % (
+                    str(mosaics_array.shape), str(default_layer_weights[0].shape)))
+        print('Setting weights of convolutional layer to mosaics')
+        mosaics_layer.set_weights([mosaics_array])
+
+        success = np.allclose(mosaics_layer.get_weights()[0], mosaics_array)
+        if not success:
+            raise ValueError('weights do not match')
+        else:
+            print('mosaic weights match in mosaicnet.py')
 
     # split samples in train and validation set, and initialize data generators
-    samples_train, samples_test = train_test_split(samples, test_size=0.05, shuffle=True, random_state=10207)
+    samples_train, samples_test = train_test_split(
+        samples, test_size=0.05, shuffle=True, random_state=10207)
 
     training_generator = TrainDataGenerator(samples_train,
                                             image_dir,
@@ -65,6 +98,7 @@ def train(base_model_name,
                                          verbose=1,
                                          save_best_only=True,
                                          save_weights_only=True)
+    weights_logger = LayerWeightsLogger(job_dir, mosaics_layer)
 
     # start training only dense layers
     for layer in nima.base_model.layers:
@@ -91,6 +125,16 @@ def train(base_model_name,
     nima.compile()
     nima.nima_model.summary()
 
+    # check that weights match mosaics
+    if mosaics:
+        loader = MosaicsLoader("/src/mosaics")
+        mosaics_array = loader.load_and_standardize_mosaics(mosaics) 
+        success = np.allclose(mosaics_layer.get_weights()[0], mosaics_array)
+        if not success:
+            raise ValueError('weights do not match before beginning conv training')
+        else:
+            print('mosaic weights match')
+
     nima.nima_model.fit_generator(generator=training_generator,
                                   validation_data=validation_generator,
                                   epochs=epochs_train_dense+epochs_train_all,
@@ -99,7 +143,7 @@ def train(base_model_name,
                                   use_multiprocessing=multiprocessing_data_load,
                                   workers=num_workers_data_load,
                                   max_q_size=30,
-                                  callbacks=[tensorboard, model_checkpointer])
+                                  callbacks=[tensorboard, model_checkpointer, weights_logger])
 
     K.clear_session()
 

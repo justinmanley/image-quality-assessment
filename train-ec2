@@ -59,7 +59,8 @@ eval $REMOTE_COPY "$SAMPLES_FILE $MACHINE:/home/ubuntu/$TRAIN_JOB_DIR/samples.js
 # start training
 DOCKER_REMOTE_RUN="sudo nvidia-docker run -d
   -v $IMAGE_DIR:/src/images
-  -v /home/ubuntu/$TRAIN_JOB_DIR:/src/$TRAIN_JOB_DIR
+  -v /home/ubuntu/train_jobs:/src/train_jobs
+  -v /home/ubuntu/architect_mosaics_processed:/src/mosaics
   -e S3_BUCKET=$s3_bucket
   -e TRAIN_JOB_DIR=$TRAIN_JOB_DIR
   $docker_image"
