@@ -252,7 +252,7 @@ def MosaicNet(input_shape=None,
         else:
             img_input = input_tensor
 
-    x = _conv_block(img_input, 32, alpha, strides=(2, 2))
+    x = _conv_block(img_input, 12, alpha, strides=(2, 2), kernel=(8, 10))
     x = _depthwise_conv_block(x, 64, alpha, depth_multiplier, block_id=1)
 
     x = _depthwise_conv_block(x, 128, alpha, depth_multiplier,
@@ -331,8 +331,10 @@ def MosaicNet(input_shape=None,
                                     weigh_path,
                                     cache_subdir='models')
         model.load_weights(weights_path)
-    elif weights is not None:
-        model.load_weights(weights)
+    # this seems to be unnecessary -- it is superseded by the call to load_weights
+    # in train.py, which comes after this call.
+    # elif weights is not None:
+    #     model.load_weights(weights)
 
     if old_data_format:
         K.set_image_data_format(old_data_format)
