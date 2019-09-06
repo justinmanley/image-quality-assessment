@@ -58,13 +58,16 @@ class FrameComposer:
             axis=1)
 
     def _normalize(self, a):
-        return np.uint8((a + 0.5) * 255)
+        # Input array 'a' is expected to have values in the range [0,1].
+        return np.uint8(a * 255)
 
     def _compose_frame(self, images):
+        # images are expected to be in the range [0,1].
         cols, rows = self._grid_dimensions
         image_rows, image_cols = images.shape[0:2]
         margin = self._grid_margin
-        frame = np.full(self._output_shape(images.shape), 0, dtype=np.float64)
+        # 0.5 represents grey for images in the range [0,1].
+        frame = np.full(self._output_shape(images.shape), 0.5, dtype=np.float64)
 
         row_start = 0
         col_start = 0
@@ -82,6 +85,9 @@ class FrameComposer:
         return frame
 
 
+def get_training_step(filename):
+    return int(os.path.splitext(filename)[0])
+
 
 class VideoGenerator:
     def __init__(self, path, scale, grid_dimensions, grid_margin, training_config_path):
@@ -94,7 +100,7 @@ class VideoGenerator:
         self._training_config_path = training_config_path
 
     def generate_video(self):
-        files = sorted(os.listdir(self._path))
+        files = sorted(os.listdir(self._path), key=get_training_step)
         # The arrays in this list each have shape (8, 10, 3, N), where N is the
         # number of filters in the layer.
         arrays = []
