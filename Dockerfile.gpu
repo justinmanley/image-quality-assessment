@@ -6,6 +6,7 @@ COPY entrypoints /src/entrypoints
 WORKDIR /src
 
 RUN pip install -r requirements.txt
+RUN pip install awscli --upgrade --user
 
 ENV PYTHONPATH='/src/:$PYTHONPATH'
 
