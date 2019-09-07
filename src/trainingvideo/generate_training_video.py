@@ -7,6 +7,7 @@ from functools import reduce
 from operator import mul
 from handlers.config_loader import load_config
 from utils.mosaics_loader import PCAWhitener, MosaicsLoader
+from trainingvideo.weights_loader import WeightsLoader, TrainingJob
 
 class IdentityImageProcessor:
     def __init__(self):
@@ -59,7 +60,21 @@ class FrameComposer:
 
     def _normalize(self, a):
         # Input array 'a' is expected to have values in the range [0,1].
-        return np.uint8(a * 255)
+        # We clip the array to the range [0, 255] after scaling it because
+        # converting floats to uint8 causes negative numbers to be wrapped
+        # around (so that, for example, -1 becomes 255). The visual effect
+        # of this wrapping is that colors which have any channels close to
+        # the boundary of the range (e.g. bright red, blue, green, yellow,
+        # magenta, black, or white), may suddenly flip to another color, so
+        # red might suddenly become yellow, or white might suddenly become
+        # magenta.
+        #
+        # Note that this clipping is only effective if the range of the array
+        # remains close to [0,255]; if it begins to diverge widely so that
+        # the underlying mean and/or standard deviation become significantly
+        # different than that of the clipped array, then the clipped array
+        # will no longer accurately represent the original, raw array.
+        return np.uint8(np.clip(a * 255, 0, 255))
 
     def _compose_frame(self, images):
         # images are expected to be in the range [0,1].
@@ -85,31 +100,26 @@ class FrameComposer:
         return frame
 
 
-def get_training_step(filename):
-    return int(os.path.splitext(filename)[0])
-
-
 class VideoGenerator:
-    def __init__(self, path, scale, grid_dimensions, grid_margin, training_config_path):
-        # Path to a directory of .npy files. Each array is expected to have
-        # values between -0.5 and 0.5.
-        self._path = path
+    def __init__(self,
+            training_job,
+            scale,
+            grid_dimensions,
+            grid_margin,
+            training_config_path):
+        self._training_job = training_job
         self._scale_factor = scale
         self._grid_dimensions = grid_dimensions
         self._grid_margin = grid_margin
         self._training_config_path = training_config_path
 
     def generate_video(self):
-        files = sorted(os.listdir(self._path), key=get_training_step)
         # The arrays in this list each have shape (8, 10, 3, N), where N is the
         # number of filters in the layer.
-        arrays = []
-        for array_file in files:
-            with open(os.path.join(self._path, array_file), 'rb') as f:
-                weights_array = np.load(f, allow_pickle=False)
-                if weights_array.shape[3] != reduce(mul, self._grid_dimensions, 1):
-                    raise ValueError('Size of grid layout must match the number of filters.')
-                arrays.append(weights_array)
+        arrays = WeightsLoader(self._training_job).load_weights()
+        all_arrays = np.array(arrays)
+        if all_arrays.shape[4] != reduce(mul, self._grid_dimensions, 1):
+            raise ValueError('Size of grid layout must match the number of filters.')
 
         composer = FrameComposer(
             scale=self._scale_factor,
@@ -118,7 +128,7 @@ class VideoGenerator:
         processor = self._get_array_processor()
 
         output_size = composer.output_size(arrays[0].shape)
-        writer = FFMPEG_VideoWriter(self._path + '.mp4', output_size, fps=1.0)
+        writer = FFMPEG_VideoWriter(self._training_job.start_time + '.mp4', output_size, fps=1.0)
         with writer:
             for filters in arrays:
                 restored_filters = processor.restore(filters)
@@ -144,8 +154,9 @@ if __name__ == '__main__':
     parser.add_argument('--training_config_path',
         default={}, type=str, help='Path to JSON training config file')
     args = parser.parse_args()
+    training_job=TrainingJob(args.arrays_directory)
     VideoGenerator(
-        path=args.arrays_directory,
+        training_job=training_job,
         scale=args.scale,
         grid_dimensions=make_tuple(args.grid_dimensions),
         grid_margin=args.grid_margin,
