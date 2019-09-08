@@ -31,12 +31,12 @@ class GenerateTrainingVideoTest(unittest.TestCase):
             grid_dimensions=(5, 2),
             grid_margin=1).compose(images)
 
-        self.assertEqual(frame.shape, (30, 118, 3))
+        self.assertEqual(frame.shape, (29, 114, 3))
 
     def testFrameComposerFrameContents(self):
         shape = (2, 2, 3)
         images = np.stack([
-            np.full(shape, 0.1 * i - 0.3)
+            np.full(shape, 0.1 * i + 0.2)
             for i in range(0, 6)
         ], axis=-1)
         self.assertEqual(images.shape, (2, 2, 3, 6))
@@ -75,7 +75,7 @@ class GenerateTrainingVideoTest(unittest.TestCase):
     def testFrameComposerFrameContentsWithScale(self):
         shape = (2, 2, 3)
         images = np.stack([
-            np.full(shape, 0.1 * i - 0.3)
+            np.full(shape, 0.1 * i + 0.2)
             for i in range(0, 6)
         ], axis=-1)
         self.assertEqual(images.shape, (2, 2, 3, 6))
@@ -86,31 +86,31 @@ class GenerateTrainingVideoTest(unittest.TestCase):
             grid_margin=1)
         frame = composer.compose(images)
 
-        self.assertEqual(frame.shape, (10, 16, 3))
+        self.assertEqual(frame.shape, (9, 14, 3))
 
         # First square (i = 0)
-        self.assertEqual(frame[:2, :2].shape, (2, 2, 3))
+        self.assertEqual(frame[:4, :4].shape, (4, 4, 3))
         assert_equal(frame[0:4, 0:4], 51)
 
         # Second square (i = 1)
-        assert_equal(frame[6:10, 0:4], 76)
+        assert_equal(frame[5:9, 0:4], 76)
 
         # Third square (i = 2)
-        assert_equal(frame[0:4, 6:10], 102)
+        assert_equal(frame[0:4, 5:9], 102)
 
         # Fourth square (i = 3)
-        assert_equal(frame[6:10, 6:10], 127)
+        assert_equal(frame[5:9, 5:9], 127)
 
         # Fifth square (i = 4)
-        assert_equal(frame[0:4, 12:16], 153)
+        assert_equal(frame[0:4, 10:14], 153)
 
         # Sixth square (i = 5)
-        assert_equal(frame[6:8, 12:16], 178)
+        assert_equal(frame[6:8, 10:14], 178)
 
         # Margins
         assert_equal(frame[4], 127)
         assert_equal(frame[:,4], 127)
-        assert_equal(frame[:,10], 127)
+        assert_equal(frame[:,9], 127)
 
     def testFrameComposerOutputSize(self):
         image_shape = (2, 2, 3)
@@ -123,11 +123,11 @@ class GenerateTrainingVideoTest(unittest.TestCase):
         composer = FrameComposer(
             scale=1,
             grid_dimensions=(3, 2),
-            grid_margin=1)
+            grid_margin=2)
         frame = composer.compose(images)
 
-        self.assertEqual(frame.shape, (5, 8, 3))
-        self.assertEqual(composer.output_size(image_shape), (8, 5, 3))
+        self.assertEqual(frame.shape, (6, 10, 3))
+        self.assertEqual(composer.video_output_size(image_shape), (10, 6, 3))
 
 
 if __name__ == '__main__':

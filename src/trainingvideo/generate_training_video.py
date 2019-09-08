@@ -9,6 +9,8 @@ from handlers.config_loader import load_config
 from utils.mosaics_loader import PCAWhitener, MosaicsLoader
 from trainingvideo.weights_loader import WeightsLoader, TrainingJob
 
+from math import gcd
+
 class IdentityImageProcessor:
     def __init__(self):
         pass
@@ -26,30 +28,39 @@ class FrameComposer:
         self._grid_margin = grid_margin
 
     def compose(self, images):
-        composition = self._compose_frame(images)
-        upsampled = self._upsample(composition)
-        return self._normalize(upsampled)
+        upsampled_images = self._upsample(images)
+        composition = self._compose_frame(upsampled_images, self._output_size(images.shape))
+        return self._normalize(composition)
 
-    def output_size(self, image_shape):
+    def _output_size(self, image_shape):
         # image_dimensions is a 3-tuple, of the form (cols, rows, channels)
         # (i.e. in the format returned by ndarray.shape). For example, for
         # an 8x10 (landscape) image, this would be (8,10,3).
-        scale = self._scale_factor
-        output_shape = self._output_shape(image_shape)
-        return (
-            output_shape[1] * scale,
-            output_shape[0] * scale,
-            output_shape[2]
-        )
-
-    def _output_shape(self, image_shape):
         cols, rows = self._grid_dimensions
         image_rows, image_cols = image_shape[0:2]
         margin = self._grid_margin
+        scale = self._scale_factor
         return (
-            rows * image_rows + (rows - 1) * margin,
-            cols * image_cols + (cols - 1) * margin,
+            rows * image_rows * scale + (rows - 1) * margin,
+            cols * image_cols * scale + (cols - 1) * margin,
             image_shape[2],
+        )
+
+    def video_output_size(self, image_shape):
+        # The first and second dimensions must be flipped for the video.
+        output_size = self._output_size(image_shape)
+        if output_size[0] % 2 != 0 or output_size[1] % 2 != 0:
+            # See https://github.com/Zulko/moviepy/blob/master/moviepy/video/io/ffmpeg_writer.py#L41.
+            raise ValueError(
+                "If either spatial dimension of the output video is odd, "
+                "the video may not display properly. The video dimensions "
+                "are (%d, %d). Adjusting the --grid_margin or the --scale "
+                "parameters can help ensure that the spatial output dimensions "
+                "are both even." % (output_size[1], output_size[0]))
+        return (
+            output_size[1],
+            output_size[0],
+            output_size[2],
         )
 
     def _upsample(self, a):
@@ -76,13 +87,13 @@ class FrameComposer:
         # will no longer accurately represent the original, raw array.
         return np.uint8(np.clip(a * 255, 0, 255))
 
-    def _compose_frame(self, images):
+    def _compose_frame(self, images, output_size):
         # images are expected to be in the range [0,1].
         cols, rows = self._grid_dimensions
         image_rows, image_cols = images.shape[0:2]
         margin = self._grid_margin
         # 0.5 represents grey for images in the range [0,1].
-        frame = np.full(self._output_shape(images.shape), 0.5, dtype=np.float64)
+        frame = np.full(output_size, 0.5, dtype=np.float64)
 
         row_start = 0
         col_start = 0
@@ -127,7 +138,7 @@ class VideoGenerator:
             grid_margin=self._grid_margin)
         processor = self._get_array_processor()
 
-        output_size = composer.output_size(arrays[0].shape)
+        output_size = composer.video_output_size(arrays[0].shape)
         writer = FFMPEG_VideoWriter(self._training_job.start_time + '.mp4', output_size, fps=1.0)
         with writer:
             for filters in arrays:
