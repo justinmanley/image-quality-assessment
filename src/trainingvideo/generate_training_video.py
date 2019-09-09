@@ -116,13 +116,11 @@ class VideoGenerator:
             training_job,
             scale,
             grid_dimensions,
-            grid_margin,
-            training_config_path):
+            grid_margin):
         self._training_job = training_job
         self._scale_factor = scale
         self._grid_dimensions = grid_dimensions
         self._grid_margin = grid_margin
-        self._training_config_path = training_config_path
 
     def generate_video(self):
         # The arrays in this list each have shape (8, 10, 3, N), where N is the
@@ -147,7 +145,8 @@ class VideoGenerator:
                 writer.write_frame(composed_frame)
 
     def _get_array_processor(self):
-        config = load_config(self._training_config_path)
+        training_config_path = os.path.join(self._training_job.directory, "config.json")
+        config = load_config(training_config_path)
         if config['mosaics']:
             loader = MosaicsLoader("/Users/justin/projects/mosaics/architect_mosaics_processed")
             mosaics = loader.load_mosaics(config['mosaics'])
@@ -162,8 +161,6 @@ if __name__ == '__main__':
     parser.add_argument('--scale', type=int, default=1, help='Amount by which to scale the arrays')
     parser.add_argument('--grid_dimensions', default='(1,1)', type=str, help='How to lay out weights')
     parser.add_argument('--grid_margin', default=1, type=int, help='Margin between filters')
-    parser.add_argument('--training_config_path',
-        default={}, type=str, help='Path to JSON training config file')
     args = parser.parse_args()
     training_job=TrainingJob(args.arrays_directory)
     VideoGenerator(
@@ -171,5 +168,4 @@ if __name__ == '__main__':
         scale=args.scale,
         grid_dimensions=make_tuple(args.grid_dimensions),
         grid_margin=args.grid_margin,
-        training_config_path=args.training_config_path,
     ).generate_video()

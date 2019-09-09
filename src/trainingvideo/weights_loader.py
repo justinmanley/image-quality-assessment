@@ -39,13 +39,14 @@ class WeightsLoader:
         self._training_job = training_job
 
     def load_weights(self):
-        training_job_directory = self._training_job.directory
-        files = sorted(os.listdir(training_job_directory), key=get_training_step)
+        training_job_weights_dir = os.path.join(
+            self._training_job.directory, "saved_weights")
+        files = sorted(os.listdir(training_job_weights_dir), key=get_training_step)
         # The arrays in this list each have shape (8, 10, 3, N), where N is the
         # number of filters in the layer.
         arrays = []
         for array_file in files:
-            with open(os.path.join(training_job_directory, array_file), 'rb') as f:
+            with open(os.path.join(training_job_weights_dir, array_file), 'rb') as f:
                 weights_array = np.load(f, allow_pickle=False)
                 arrays.append(weights_array)
         return arrays
