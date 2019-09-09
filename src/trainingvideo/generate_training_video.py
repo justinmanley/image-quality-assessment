@@ -92,8 +92,8 @@ class FrameComposer:
         cols, rows = self._grid_dimensions
         image_rows, image_cols = images.shape[0:2]
         margin = self._grid_margin
-        # 0.5 represents grey for images in the range [0,1].
-        frame = np.full(output_size, 0.5, dtype=np.float64)
+        # 1 represents white for images in the range [0,1].
+        frame = np.full(output_size, 1, dtype=np.float64)
 
         row_start = 0
         col_start = 0
@@ -116,11 +116,13 @@ class VideoGenerator:
             training_job,
             scale,
             grid_dimensions,
-            grid_margin):
+            grid_margin,
+            fps):
         self._training_job = training_job
         self._scale_factor = scale
         self._grid_dimensions = grid_dimensions
         self._grid_margin = grid_margin
+        self._fps = fps
 
     def generate_video(self):
         # The arrays in this list each have shape (8, 10, 3, N), where N is the
@@ -137,7 +139,7 @@ class VideoGenerator:
         processor = self._get_array_processor()
 
         output_size = composer.video_output_size(arrays[0].shape)
-        writer = FFMPEG_VideoWriter(self._training_job.start_time + '.mp4', output_size, fps=1.0)
+        writer = FFMPEG_VideoWriter(self._training_job.start_time + '.mp4', output_size, fps=self._fps)
         with writer:
             for filters in arrays:
                 restored_filters = processor.restore(filters)
@@ -161,6 +163,7 @@ if __name__ == '__main__':
     parser.add_argument('--scale', type=int, default=1, help='Amount by which to scale the arrays')
     parser.add_argument('--grid_dimensions', default='(1,1)', type=str, help='How to lay out weights')
     parser.add_argument('--grid_margin', default=1, type=int, help='Margin between filters')
+    parser.add_argument('--fps', default=1, type=int, help='FPS of output video')
     args = parser.parse_args()
     training_job=TrainingJob(args.arrays_directory)
     VideoGenerator(
@@ -168,4 +171,5 @@ if __name__ == '__main__':
         scale=args.scale,
         grid_dimensions=make_tuple(args.grid_dimensions),
         grid_margin=args.grid_margin,
+        fps=args.fps,
     ).generate_video()
